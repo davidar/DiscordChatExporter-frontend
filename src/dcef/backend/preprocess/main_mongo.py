@@ -144,6 +144,8 @@ if __name__ == "__main__":
 		input_dir = "../../../exports/"
 	elif sys.argv[1] == "docker":
 		input_dir = "/dcef/exports/"
+	elif sys.argv[1] == "dev":
+		input_dir = "../../../../release/exports/"
 	else:
 		print_help()
 		sys.exit(1)

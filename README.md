@@ -141,6 +141,56 @@ The app will autostart with your computer if you are using `docker`. You need to
 
 </details>
 
+<details><summary><b>I am using Linux without Docker</b></summary>
+
+Prerequisites:
+- Python 3.11 or newer
+- Node.js 18.17.1 or newer
+- MongoDB 6.0.5 or newer
+- CPU with AVX support
+
+1. Install MongoDB and start the service:
+```bash
+# Ubuntu/Debian
+sudo apt install mongodb
+sudo systemctl start mongodb
+
+# Arch Linux
+sudo pacman -S mongodb-bin
+sudo systemctl start mongodb
+```
+
+2. Install Python dependencies:
+```bash
+cd src/dcef/backend/fastapi
+pip install -r requirements.txt
+cd ../preprocess
+pip install -r requirements.txt
+```
+
+3. Build the frontend:
+```bash
+cd ../../frontend
+npm install
+npm run build
+```
+
+4. Run the preprocess script to process your exports:
+```bash
+cd ../backend/preprocess
+python3.11 main_mongo.py dev
+```
+
+5. Start the FastAPI server:
+```bash
+cd ../fastapi
+python3.11 prod.py
+```
+
+The viewer will be available at [http://127.0.0.1:21011](http://127.0.0.1:21011)
+
+</details>
+
 
 <details><summary><b>[for developers] I am to run the development version directly from the source code (Windows)</b></summary>
 
