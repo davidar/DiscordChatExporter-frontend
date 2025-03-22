@@ -1,0 +1,1 @@
+# Vector search module for semantic message search 

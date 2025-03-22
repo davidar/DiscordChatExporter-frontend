@@ -175,7 +175,7 @@ class AssetProcessor:
 		if filename_with_hash in self.local_assets:
 			return self.local_assets[filename_with_hash]
 		else:
-			print("        Warning: Could not find local path of " + filename_with_hash)
+			# print("        Warning: Could not find local path of " + filename_with_hash)
 			return None
 
 	def process(self, original_filepath: str, is_searchable: bool):

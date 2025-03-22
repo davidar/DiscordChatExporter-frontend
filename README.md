@@ -162,28 +162,26 @@ sudo systemctl start mongodb
 
 2. Install Python dependencies:
 ```bash
-cd src/dcef/backend/fastapi
-pip install -r requirements.txt
-cd ../preprocess
-pip install -r requirements.txt
+pip install -r src/dcef/backend/fastapi/requirements.txt
+pip install -r src/dcef/backend/preprocess/requirements.txt
 ```
 
 3. Build the frontend:
 ```bash
-cd ../../frontend
+cd src/dcef/frontend
 npm install
 npm run build
 ```
 
 4. Run the preprocess script to process your exports:
 ```bash
-cd ../backend/preprocess
+cd src/dcef/backend/preprocess
 python3.11 main_mongo.py dev
 ```
 
 5. Start the FastAPI server:
 ```bash
-cd ../fastapi
+cd src/dcef/backend/fastapi
 python3.11 prod.py
 ```
 

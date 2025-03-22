@@ -13,6 +13,7 @@ from .search import get_searchcategories
 from .search import search
 from .search import get_autocomplete
 from .messages import get_messages
+from .vector_search import semantic_search
 
 # fix PIPE encoding error on Windows, auto flush print
 sys.stdout.reconfigure(encoding='utf-8')
@@ -60,3 +61,4 @@ app.include_router(get_searchcategories.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(get_autocomplete.router, prefix="/api")
 app.include_router(get_messages.router, prefix="/api")
+app.include_router(semantic_search.router, prefix="/api")

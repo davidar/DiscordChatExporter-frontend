@@ -10,6 +10,9 @@ __pycache__
 .vscode
 .venv
 
+/qdrant_storage/
+/vector_index/
+
 
 # releases (built files)
 /release/*.zip
