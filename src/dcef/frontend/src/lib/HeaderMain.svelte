@@ -7,24 +7,21 @@
     import SearchInput from "./search/SearchInput.svelte";
     import { getSearchState } from "./search/searchState.svelte";
 
-    const guildState = getGuildState()
-    const layoutState = getLayoutState()
+    const guildState = getGuildState();
+    const layoutState = getLayoutState();
     const searchState = getSearchState();
-
-
-
-    let showSearchBar = $derived(!searchState.searchManuallyHidden && layoutState.mobile)
-
+    
+    // Use $derived for reactive values
+    let showSearchBar = $derived(!searchState.searchManuallyHidden && layoutState.mobile);
 
     function showSearch() {
-        searchState.showSearch()
+        searchState.showSearch();
     }
 
     function hideSearch() {
-        searchState.hideSearch()
+        searchState.hideSearch();
     }
 </script>
-
 
 {#if !showSearchBar}
 <div class="header-main" class:threadshown={layoutState.threadshown}>
@@ -51,7 +48,7 @@
                     {#if layoutState.channelpinnedshown}
                         <div class="pin-messages">
                             {#key guildState.channelId}
-                                <Pinned channelId={guildState.channelId} />
+                                <Pinned channelId={[guildState.channelId]} />
                             {/key}
                         </div>
                     {/if}
@@ -83,8 +80,6 @@
         </div>
     </div>
 {/if}
-
-
 
 <style>
     .searchbar {
@@ -119,8 +114,6 @@
         }
     }
 
-
-
     .hamburger-icon {
         cursor: pointer;
         color: #b5bac1;
@@ -148,12 +141,10 @@
             position: absolute;
             top: 30px;
             right: 0px;
-
             width: 400px;
             z-index: 500;
         }
     }
-
 
     .header-main {
         height: 100%;
@@ -178,5 +169,6 @@
         font-weight: 600;
         color: #F2F3F5;
         flex-grow: 3;
+        align-items: center;
     }
 </style>

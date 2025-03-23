@@ -265,3 +265,52 @@ export async function fetchCategoriesChannelsThreads(guildId: string): Promise<C
     }
     return []
 }
+
+export async function fetchSemanticDistances(guildId: string | null, channelId: string, direction: "before" | "after" | "around" | "first" | "last", messageId: string | null = null, limit: number = 50) {
+    if (channelId === null) {
+        console.error("api - fetchSemanticDistances - channelId is null")
+        return {
+            prev_page_cursor: null,
+            messageDistances: [],
+            next_page_cursor: null
+        }
+    }
+    if (guildId === null) {
+        guildId = "000000000000000000000000"
+    }
+    if (messageId === null || messageId === "first") {
+        messageId = "000000000000000000000000"
+    }
+    else if (messageId === "last") {
+        messageId = "999999999999999999999999"
+    }
+    try {
+        let response
+        if (direction === "first") {
+            response = await fetch(`/api/guild/semantic_distances?guild_id=${encodeURIComponent(guildId)}&channel_id=${encodeURIComponent(channelId)}&next_page_cursor=0&limit=${encodeURIComponent(limit)}`)
+        }
+        else if (direction === "last") {
+            response = await fetch(`/api/guild/semantic_distances?guild_id=${encodeURIComponent(guildId)}&channel_id=${encodeURIComponent(channelId)}&prev_page_cursor=999999999999999999999999&limit=${encodeURIComponent(limit)}`)
+        }
+        else if (direction === "before") {
+            response = await fetch(`/api/guild/semantic_distances?guild_id=${encodeURIComponent(guildId)}&channel_id=${encodeURIComponent(channelId)}&prev_page_cursor=${encodeURIComponent(messageId)}&limit=${encodeURIComponent(limit)}`)
+        }
+        else if (direction === "after") {
+            response = await fetch(`/api/guild/semantic_distances?guild_id=${encodeURIComponent(guildId)}&channel_id=${encodeURIComponent(channelId)}&next_page_cursor=${encodeURIComponent(messageId)}&limit=${encodeURIComponent(limit)}`)
+        }
+        else {
+            response = await fetch(`/api/guild/semantic_distances?guild_id=${encodeURIComponent(guildId)}&channel_id=${encodeURIComponent(channelId)}&around_page_cursor=${encodeURIComponent(messageId)}&limit=${encodeURIComponent(limit)}`)
+        }
+
+        let retObj = await response.json()
+        return retObj
+    }
+    catch (e) {
+        console.error("api - Failed to fetch semantic distances", e)
+        return {
+            prev_page_cursor: null,
+            messageDistances: [],
+            next_page_cursor: null
+        }
+    }
+}

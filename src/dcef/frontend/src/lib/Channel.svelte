@@ -1,22 +1,44 @@
 <script lang="ts">
     import { isDateDifferent } from "../js/helpers";
-    import { fetchMessages } from "../js/stores/api";
+    import { fetchMessages, fetchSemanticDistances } from "../js/stores/api";
     import { getGuildState } from "../js/stores/guildState.svelte";
     import { getLayoutState } from "../js/stores/layoutState.svelte";
+    import { getSemanticBoundaryState } from "../js/stores/semanticBoundaryStore";
     import DateSeparator from "./DateSeparator.svelte";
     import InfiniteScroll3 from "./InfiniteScroll3.svelte";
     import ChannelStart from "./message/ChannelStart.svelte";
     import Message from "./message/Message.svelte";
+    import SemanticBoundarySeparator from "./SemanticBoundarySeparator.svelte";
+    import type { Message as MessageType } from "../js/interfaces";
 
     const guildState = getGuildState()
     const layoutState = getLayoutState()
+    const semanticBoundaryState = getSemanticBoundaryState();
 
     let apiGuildId = $derived(guildState.guildId ? guildState.guildId : "000000000000000000000000")
     let apiChannelId = $derived(guildState.channelId)
 
-
     async function fetchMessagesWrapper(direction: "before" | "after" | "around" | "first" | "last", messageId: string | null = null, limit: number) {
-        return fetchMessages(apiGuildId, apiChannelId, direction, messageId, limit)
+        const messagesResponse = await fetchMessages(apiGuildId, apiChannelId || "", direction, messageId, limit);
+        
+        // Always fetch semantic distances
+        if (apiChannelId) {
+            console.log("Fetching semantic distances for", direction, messageId);
+            try {
+                const distancesResponse = await fetchSemanticDistances(apiGuildId, apiChannelId, direction, messageId, limit);
+                
+                if (distancesResponse && distancesResponse.messageDistances) {
+                    console.log("Received semantic distances:", distancesResponse.messageDistances.length, "items");
+                    semanticBoundaryState.setDistances(distancesResponse.messageDistances);
+                } else {
+                    console.error("No messageDistances found in response:", distancesResponse);
+                }
+            } catch (error) {
+                console.error("Error fetching semantic distances:", error);
+            }
+        }
+        
+        return messagesResponse;
     }
 </script>
 
@@ -40,6 +62,9 @@
             {#if isDateDifferent(previousMessage, message)}
                 <DateSeparator messageId={message._id} />
             {/if}
+            
+            <SemanticBoundarySeparator messageId={message._id} />
+            
             <Message message={message} previousMessage={previousMessage} />
         {/if}
     </div>
@@ -53,7 +78,7 @@
                 {#key apiChannelId}
                     <InfiniteScroll3
                         fetchMessages={fetchMessagesWrapper}
-                        scrollToMessageId={guildState.channelMessageId}
+                        scrollToMessageId={guildState.channelMessageId || ""}
                         snippetMessage={renderMessageSnippet2}
                         channelStartSnippet={channelStartSnippet}
                     />
@@ -71,7 +96,7 @@
     }
 
     .threadshown {
-        border-bottom-right-radius: 8px;
+        border-top-right-radius: 8px;
     }
     .channel {
         background-color: #313338;

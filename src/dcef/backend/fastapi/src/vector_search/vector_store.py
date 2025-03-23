@@ -313,7 +313,7 @@ class VectorStore:
             # Count documents to be deleted
             count_response = self.qdrant_client.count(
                 collection_name=COLLECTION_NAME,
-                filter=filter_param
+                count_filter=filter_param
             )
             count = count_response.count
             
@@ -323,7 +323,7 @@ class VectorStore:
                 # Delete documents matching the filter
                 self.qdrant_client.delete(
                     collection_name=COLLECTION_NAME,
-                    filter=filter_param
+                    points_selector=filter_param
                 )
                 
                 return count
