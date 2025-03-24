@@ -9,7 +9,7 @@ import hashlib
 import json
 
 # HuggingFace for embeddings
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 
 # Qdrant for vector storage
 from qdrant_client import QdrantClient
@@ -22,6 +22,7 @@ from ..common.Database import Database
 # Constants
 COLLECTION_NAME = "discord_messages"
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Optimized for reranking
 VECTOR_DIMENSION = 384  # BGE-small-en-v1.5 dimensions
 DEFAULT_BATCH_SIZE = 1024
 
@@ -53,6 +54,9 @@ class VectorStore:
             EMBEDDING_MODEL,
             cache_folder=os.path.join(PERSIST_DIR, "embedding_model")
         )
+        
+        # Create reranker model
+        self.reranker = CrossEncoder(RERANKER_MODEL)
         
         # Create qdrant client and collection
         self.qdrant_client = QdrantClient(host=qdrant_host, port=qdrant_port)
@@ -335,7 +339,7 @@ class VectorStore:
     
     def search(self, query: str, limit: int = 10, similarity_cutoff: float = 0.7) -> List[Dict[str, Any]]:
         """
-        Search for messages using semantic search
+        Search for messages using semantic search with reranking
         
         Args:
             query: The search query
@@ -343,25 +347,38 @@ class VectorStore:
             similarity_cutoff: Minimum similarity score threshold (0-1)
             
         Returns:
-            List of messages matching the query
+            List of messages matching the query, reranked by relevance
         """
         try:
             # Generate query embedding
-            query_embedding = self.embedding_model.encode(query, show_progress_bar=False)
+            prefix = "Represent this sentence for searching relevant passages: "
+            query_embedding = self.embedding_model.encode(prefix + query, show_progress_bar=False)
             
-            # Search for similar documents
+            # Get more results than needed for reranking
+            initial_limit = min(limit * 2, 50)  # Get up to 2x the requested limit, max 50
             search_results = self.qdrant_client.search(
                 collection_name=COLLECTION_NAME,
                 query_vector=query_embedding.tolist(),
-                limit=limit,
+                limit=initial_limit,
                 score_threshold=similarity_cutoff
             )
             
-            # Format results
-            results = []
+            if not search_results:
+                return []
+            
+            # Prepare pairs for reranking
+            pairs = []
             for result in search_results:
+                pairs.append((query, result.payload.get("text", "")))
+            
+            # Rerank the results
+            rerank_scores = self.reranker.predict(pairs)
+            
+            # Combine results with rerank scores
+            reranked_results = []
+            for result, rerank_score in zip(search_results, rerank_scores):
                 payload = result.payload
-                results.append({
+                reranked_results.append({
                     "message_id": payload.get("message_id"),
                     "channel_id": payload.get("channel_id"),
                     "guild_id": payload.get("guild_id"),
@@ -369,10 +386,13 @@ class VectorStore:
                     "author_name": payload.get("author_name"),
                     "timestamp": payload.get("timestamp"),
                     "point_id": str(result.id),
-                    "score": result.score
+                    "vector_score": result.score,
+                    "rerank_score": float(rerank_score)
                 })
             
-            return results
+            # Sort by rerank score and take top results
+            reranked_results.sort(key=lambda x: x["rerank_score"], reverse=True)
+            return reranked_results[:limit]
             
         except Exception as e:
             logger.error(f"Error searching: {e}")

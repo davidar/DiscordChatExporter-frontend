@@ -81,13 +81,14 @@ def display_results(results, show_full_json=False):
     
     # Display results in a dense IRC-like format
     for result in results["results"]:
-        score = f"{result.get('score', 0):.2f}"
+        vector_score = f"{result.get('vector_score', 0):.2f}"
+        rerank_score = f"{result.get('rerank_score', 0):.2f}"
         timestamp = format_timestamp(result.get("timestamp", ""))
         author_name = result.get("author_name", "Unknown User")
         content = result.get("content", "")
         
-        # Format everything on a single line
-        console.print(f"[dim]{timestamp}[/dim] [bold green]{author_name}:[/bold green] {content} [dim][cyan]({score})[/dim]")
+        # Format everything on a single line with both scores
+        console.print(f"[dim]{timestamp}[/dim] [bold green]{author_name}:[/bold green] {content} [dim][cyan](vector: {vector_score}, rerank: {rerank_score})[/dim]")
     
     # Display detailed view for each result if requested
     if show_full_json:
@@ -131,7 +132,7 @@ def check_server_status(server_url):
 def main():
     parser = argparse.ArgumentParser(description="Search Discord messages using semantic search")
     parser.add_argument("query", help="Search query")
-    parser.add_argument("--limit", type=int, default=10, help="Maximum number of results (1-100)")
+    parser.add_argument("--limit", type=int, default=50, help="Maximum number of results (1-100)")
     parser.add_argument("--no-full-messages", action="store_false", dest="fetch_full_messages", 
                         help="Don't fetch full message data")
     parser.add_argument("--server", default="http://localhost:21011", 
