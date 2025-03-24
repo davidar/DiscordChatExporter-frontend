@@ -3,6 +3,7 @@ import { writable, get } from "svelte/store";
 
 // Create writable stores for state management
 const semanticDistances = writable(new Map<string, number>());
+const boundaryJustifications = writable(new Map<string, string>());
 const currentGuildId = writable("");
 const currentChannelId = writable("");
 
@@ -19,6 +20,7 @@ export function getSemanticBoundaryState() {
         if (channelStateId !== currChannelId || guildStateId !== currGuildId) {
             // Channel changed, clear semantic distances
             semanticDistances.set(new Map());
+            boundaryJustifications.set(new Map());
             currentChannelId.set(channelStateId || "");
             currentGuildId.set(guildStateId);
         }
@@ -29,14 +31,29 @@ export function getSemanticBoundaryState() {
 
     /**
      * Set semantic distances for a batch of messages
-     * @param distances Array of {messageId, nextMessageId, distance} objects
+     * @param distances Array of {messageId, nextMessageId, distance, justification} objects
      */
-    function setDistances(distances: Array<{messageId: string, nextMessageId: string, distance: number}>) {
+    function setDistances(distances: Array<{messageId: string, nextMessageId: string, distance: number, justification?: string}>) {
         console.log("Setting semantic distances:", distances.length, "items");
+        
+        // Update distance values
         semanticDistances.update(map => {
             const newMap = new Map(map);
             for (const item of distances) {
-                newMap.set(item.messageId, item.distance);
+                // Store the boundary with the second message (nextMessageId) to properly
+                // align boundaries in the UI - the boundary belongs ABOVE the nextMessage
+                newMap.set(item.nextMessageId, item.distance);
+            }
+            return newMap;
+        });
+        
+        // Update justifications
+        boundaryJustifications.update(map => {
+            const newMap = new Map(map);
+            for (const item of distances) {
+                if (item.justification) {
+                    newMap.set(item.nextMessageId, item.justification);
+                }
             }
             return newMap;
         });
@@ -70,12 +87,22 @@ export function getSemanticBoundaryState() {
         const distancesMap = get(semanticDistances);
         return distancesMap.get(messageId) || 0;
     }
+    
+    /**
+     * Get justification for a boundary
+     * @param messageId ID of the message
+     */
+    function getJustification(messageId: string): string {
+        const justificationsMap = get(boundaryJustifications);
+        return justificationsMap.get(messageId) || "";
+    }
 
     return {
         // Methods
         setDistances,
         getBoundaryStrength,
         getDistance,
+        getJustification,
         checkChannelChange,
         
         // Legacy properties needed by other components
