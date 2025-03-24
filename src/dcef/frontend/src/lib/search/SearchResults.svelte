@@ -4,109 +4,128 @@
     import { findChannel, findThread, getGuildState, isChannel } from '../../js/stores/guildState.svelte';
     import { getLayoutState } from '../../js/stores/layoutState.svelte';
     import DateSeparator from '../DateSeparator.svelte';
-    import InfiniteScroll3 from '../InfiniteScroll3.svelte';
     import Icon from '../icons/Icon.svelte';
     import ChannelIcon from '../menuchannels/ChannelIcon.svelte';
     import Message from '../message/Message.svelte';
     import { getSearchState } from './searchState.svelte';
+    import type { Message as MessageType } from '../../js/interfaces';
 
     const guildState = getGuildState()
     const searchState = getSearchState();
     const layoutState = getLayoutState()
     let apiGuildId = $derived(guildState.guildId ? guildState.guildId : "000000000000000000000000")
 
+    let messages = $state<MessageType[]>([]);
+    let loading = $state(false);
+    let error = $state("");
 
-
-    function addCommas(count: number) {
+    function addCommas(count: number | string): string {
+        if (typeof count === 'string') {
+            return count;
+        }
         return count.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
 
-    async function fetchMessagesWrapper(direction: "before" | "after" | "around" | "first" | "last", messageId: string | null = null, limit: number) {
-        return fetchSearch(apiGuildId, searchState.searchPrompt, direction, messageId, limit)
+    async function loadSearchResults() {
+        if (!searchState.submittedSearchPrompt) return;
+        
+        loading = true;
+        error = "";
+        
+        try {
+            const results = await fetchSearch(apiGuildId, searchState.submittedSearchPrompt, "first", null, 50);
+            messages = results;
+        } catch (e) {
+            error = "Failed to load search results";
+            console.error(e);
+        } finally {
+            loading = false;
+        }
     }
+
+    $effect(() => {
+        if (searchState.submittedSearchPrompt) {
+            loadSearchResults();
+        }
+    });
 </script>
 
-{#snippet renderMessageSnippet2(message, previousMessage)}
-    <div data-messageid={message._id}>
-        {#if !previousMessage || previousMessage.channelId !== message.channelId}
-            {@const channelObj = findChannel(message.channelId)}
-            {@const threadObj = findThread(message.channelId)}
-            {#if threadObj}
-                {@const parentChannelObj = findChannel(threadObj.categoryId)}
-                <div class="channelthread-name-wrapper">
-                    <button class="thread-name" onclick={()=>guildState.changeThreadId(threadObj._id, null)}>
-                        <ChannelIcon channel={threadObj} width={16} />{threadObj.name}
-                    </button>
-                    <button class="channel-name-small" onclick={()=>guildState.changeChannelId(parentChannelObj._id, null)}>
-                        <ChannelIcon channel={parentChannelObj} width={12} />{parentChannelObj?.name}
-                    </button>
-                </div>
-            {:else if channelObj}
-                <div class="channelthread-name-wrapper">
-                    <button class="channelthread-name"  onclick={()=>{
-                        if (isChannel(channelObj._id)) {
-                            guildState.changeChannelId(channelObj._id, null)
-                        } else {
-                            guildState.changeThreadId(channelObj._id, null)
-                        }
-                    }}>
-                        <ChannelIcon channel={channelObj} width={16} />{channelObj.name}
-                    </button>
-                </div>
-            {/if}
-        {/if}
-        {#if isDateDifferent(previousMessage, message)}
-            <DateSeparator messageId={message._id} />
-        {/if}
-        <div class="searchresult-message-wrapper">
-            <Message message={message} previousMessage={previousMessage} showJump={true} mergeMessages={false} />
-        </div>
-    </div>
-{/snippet}
-
-{#snippet emptySnippet()}
-    <div class="channel-wrapper">
-        <div class="no-results-wrapper">
-            <div class="no-results-inner">
-                <Icon name="placeholder/no-search-results" width={160} height={160} />
-                <div class="no-results-msg">We searched far and wide. Unfortunately, no results were found.</div>
-            </div>
-        </div>
-    </div>
-{/snippet}
-
-
 <div class="channel-wrapper">
-    {#key searchState.submittedSearchPrompt}
-        {#if searchState.submittedSearchPrompt !== ""}
-            <div class="search-header">
-                <div class="header-txt">
-                    {#await fetchSearchCount(apiGuildId, searchState.submittedSearchPrompt)}
-                        Searching... <div class="spinner"></div>
-                    {:then count}
-                        {#if count === 0}
-                            No Results
-                        {:else}
-                            {addCommas(count)} Results
-                        {/if}
-                    {:catch error}
-                        <p style="color: red">{error.message}</p>
-                    {/await}
+    {#if searchState.submittedSearchPrompt}
+        <div class="search-header">
+            <div class="header-txt">
+                {#await fetchSearchCount(apiGuildId, searchState.submittedSearchPrompt)}
+                    Searching... <div class="spinner"></div>
+                {:then count}
+                    {#if count === 0}
+                        No Results
+                    {:else}
+                        <!-- {addCommas(count)} Results -->
+                    {/if}
+                {:catch error}
+                    <p style="color: red">{error.message}</p>
+                {/await}
+            </div>
+        </div>
+        <div class="scrollwrapper" class:ismobile={layoutState.mobile}>
+            {#if loading}
+                <div class="loading-wrapper">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Loading results...</div>
                 </div>
-            </div>
-            <div class="scrollwrapper" class:ismobile={layoutState.mobile}>
-                <InfiniteScroll3
-                    fetchMessages={fetchMessagesWrapper}
-                    guildId={apiGuildId}
-                    scrollToMessageId={"last"}
-                    snippetMessage={renderMessageSnippet2}
-                    emptySnippet={emptySnippet}
-                />
-            </div>
-        {/if}
-    {/key}
+            {:else if error}
+                <div class="error-wrapper">
+                    <div class="error-text">{error}</div>
+                </div>
+            {:else if messages.length === 0}
+                <div class="no-results-wrapper">
+                    <div class="no-results-inner">
+                        <Icon name="placeholder/no-search-results" width={160} height={160} />
+                        <div class="no-results-msg">We searched far and wide. Unfortunately, no results were found.</div>
+                    </div>
+                </div>
+            {:else}
+                {#each messages as message, i}
+                    <div data-messageid={message._id}>
+                        {#if i === 0 || messages[i - 1].channelId !== message.channelId}
+                            {@const channelObj = findChannel(message.channelId)}
+                            {@const threadObj = findThread(message.channelId)}
+                            {#if threadObj}
+                                {@const parentChannelObj = findChannel(threadObj.categoryId)}
+                                <div class="channelthread-name-wrapper">
+                                    <button class="thread-name" onclick={()=>guildState.changeThreadId(threadObj._id, null)}>
+                                        <ChannelIcon channel={threadObj} width={16} />{threadObj.name}
+                                    </button>
+                                    <button class="channel-name-small" onclick={()=>guildState.changeChannelId(parentChannelObj._id, null)}>
+                                        <ChannelIcon channel={parentChannelObj} width={12} />{parentChannelObj?.name}
+                                    </button>
+                                </div>
+                            {:else if channelObj}
+                                <div class="channelthread-name-wrapper">
+                                    <button class="channelthread-name" onclick={()=>{
+                                        if (isChannel(channelObj._id)) {
+                                            guildState.changeChannelId(channelObj._id, null)
+                                        } else {
+                                            guildState.changeThreadId(channelObj._id, null)
+                                        }
+                                    }}>
+                                        <ChannelIcon channel={channelObj} width={16} />{channelObj.name}
+                                    </button>
+                                </div>
+                            {/if}
+                        {/if}
+                        {#if i === 0 || isDateDifferent(messages[i - 1], message)}
+                            <DateSeparator messageId={message._id} />
+                        {/if}
+                        <div class="searchresult-message-wrapper">
+                            <Message message={message} previousMessage={i > 0 ? messages[i - 1] : null} showJump={true} mergeMessages={false} />
+                        </div>
+                    </div>
+                {/each}
+            {/if}
+        </div>
+    {/if}
 </div>
-
 
 <style>
     .spinner {
@@ -127,19 +146,39 @@
         }
     }
 
+    .loading-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 32px;
+        .loading-text {
+            color: #b5bac1;
+            font-size: 16px;
+        }
+    }
+
+    .error-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+        .error-text {
+            color: #f23f42;
+            font-size: 16px;
+        }
+    }
 
     .channelthread-name-wrapper {
         display: flex;
         gap: 8px;
-
         margin: 18px 4px 8px 14px;
         .channelthread-name {
             display: flex;
             gap: 4px;
             font-size: 16px;
-
             align-items: center;
-
             cursor: pointer;
         }
         .channelthread-name:hover {
@@ -167,6 +206,7 @@
             text-decoration: underline;
         }
     }
+
     .searchresult-message-wrapper {
         border-radius: 8px;
         margin: 6px 16px 8px 16px;
@@ -187,7 +227,6 @@
             flex-direction: column;
             gap: 40px;
             align-items: center;
-
             .no-results-msg {
                 max-width: 280px;
                 color: #dbdee1;
@@ -196,25 +235,19 @@
                 text-align: center;
             }
         }
-
-
     }
 
     .channel-wrapper {
         height: 100%;
-
         display: flex;
         flex-direction: column;
         overflow: hidden;
-
 
         .search-header {
             width: 100%;
             height: 56px;
             background-color: #1e1f22;
             font-size: 16px;
-
-
             display: flex;
             align-items: center;
 
@@ -232,6 +265,7 @@
 
         .scrollwrapper {
             height: calc(100% - 56px);
+            overflow-y: auto;
         }
         .scrollwrapper.ismobile {
             height: calc(100% - 56px - 47px);

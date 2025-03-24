@@ -55,32 +55,10 @@ export async function fetchSearch(guildId: string | null, prompt: string, direct
     if (guildId === null) {
         guildId = "000000000000000000000000"
     }
-    if (messageId === null || messageId === "first") {
-        messageId = "000000000000000000000000"
-    }
-    else if (messageId === "last") {
-        messageId = "999999999999999999999999"
-    }
     try {
-        let response
-        if (direction === "first") {
-            response = await fetch(`/api/guild/search?guild_id=${encodeURIComponent(guildId)}&prompt=${encodeURIComponent(prompt)}&next_page_cursor=0&limit=${encodeURIComponent(limit)}`)
-        }
-        else if (direction === "last") {
-            response = await fetch(`/api/guild/search?guild_id=${encodeURIComponent(guildId)}&prompt=${encodeURIComponent(prompt)}&prev_page_cursor=999999999999999999999999&limit=${encodeURIComponent(limit)}`)
-        }
-        else if (direction === "before") {
-            response = await fetch(`/api/guild/search?guild_id=${encodeURIComponent(guildId)}&prompt=${encodeURIComponent(prompt)}&prev_page_cursor=${encodeURIComponent(messageId)}&limit=${encodeURIComponent(limit)}`)
-        }
-        else if (direction === "after") {
-            response = await fetch(`/api/guild/search?guild_id=${encodeURIComponent(guildId)}&prompt=${encodeURIComponent(prompt)}&next_page_cursor=${encodeURIComponent(messageId)}&limit=${encodeURIComponent(limit)}`)
-        }
-        else {
-            response = await fetch(`/api/guild/search?guild_id=${encodeURIComponent(guildId)}&prompt=${encodeURIComponent(prompt)}&around_page_cursor=${encodeURIComponent(messageId)}&limit=${encodeURIComponent(limit)}`)
-        }
-
-        let messageIds = await response.json()
-        return messageIds
+        const response = await fetch(`/api/guild/semantic_search?guild_id=${encodeURIComponent(guildId)}&query=${encodeURIComponent(prompt)}&limit=${encodeURIComponent(limit)}&fetch_full_messages=true`)
+        const data = await response.json()
+        return data.results.map((result: any) => result.message)
     }
     catch (e) {
         console.error("api - Failed to fetch search", e)
@@ -94,22 +72,13 @@ export async function fetchPinnedMessages(guildId: string | null, channelId: str
 }
 
 export async function fetchSearchCount(guildId: string | null, prompt: string): Promise<number | string> {
-    // delay a bit to make sure (faster) search query runs first
-    await new Promise(r => setTimeout(r, 25));
-
     if (guildId === null) {
         guildId = "000000000000000000000000"
     }
     try {
-        let response = await fetch(`/api/guild/search/count?guild_id=${encodeURIComponent(guildId)}&prompt=${encodeURIComponent(prompt)}`)
-        let count = await response.text()
-        // if numeric, return as number
-        try {
-            return Number(count)
-        }
-        catch (e) {
-            return "error"
-        }
+        const response = await fetch(`/api/guild/semantic_search?guild_id=${encodeURIComponent(guildId)}&query=${encodeURIComponent(prompt)}&limit=1&fetch_full_messages=false`)
+        const data = await response.json()
+        return data.count
     }
     catch (e) {
         console.error("api - Failed to fetch search count", e)
