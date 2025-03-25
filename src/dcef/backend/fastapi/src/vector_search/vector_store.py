@@ -25,6 +25,7 @@ EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Optimized for reranking
 VECTOR_DIMENSION = 384  # BGE-small-en-v1.5 dimensions
 DEFAULT_BATCH_SIZE = 1024
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
 # Configure paths and logging
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[6]
@@ -351,8 +352,7 @@ class VectorStore:
         """
         try:
             # Generate query embedding
-            prefix = "Represent this sentence for searching relevant passages: "
-            query_embedding = self.embedding_model.encode(prefix + query, show_progress_bar=False)
+            query_embedding = self.embedding_model.encode(BGE_QUERY_PREFIX + query, show_progress_bar=False)
             
             # Get more results than needed for reranking
             initial_limit = min(limit * 2, 50)  # Get up to 2x the requested limit, max 50
@@ -396,4 +396,49 @@ class VectorStore:
             
         except Exception as e:
             logger.error(f"Error searching: {e}")
-            raise 
+            raise
+    
+    def count_matches(self, query: str, guild_id: str = None, similarity_cutoff: float = 0.7) -> int:
+        """
+        Count the number of messages matching a semantic search query without retrieving full results
+        
+        Args:
+            query: The search query
+            guild_id: Optional guild ID to filter results by
+            similarity_cutoff: Minimum similarity score threshold (0-1)
+            
+        Returns:
+            Count of matching messages
+        """
+        try:
+            # Prepare filter if guild_id is provided
+            search_filter = None
+            if guild_id:
+                search_filter = Filter(
+                    must=[
+                        FieldCondition(
+                            key="guild_id",
+                            match=MatchValue(value=guild_id)
+                        )
+                    ]
+                )
+            
+            # For semantic search with similarity threshold, we need to use search
+            # Generate query embedding
+            query_embedding = self.embedding_model.encode(BGE_QUERY_PREFIX + query, show_progress_bar=False)
+            
+            # Use search with high limit to get approximate count
+            # This is necessary because Qdrant doesn't support vector similarity in count queries
+            search_results = self.qdrant_client.search(
+                collection_name=COLLECTION_NAME,
+                query_vector=query_embedding.tolist(),
+                limit=1000,  # High limit to get a good estimate
+                score_threshold=similarity_cutoff,
+                query_filter=search_filter
+            )
+            
+            return len(search_results)
+            
+        except Exception as e:
+            logger.error(f"Error counting matches: {e}")
+            raise

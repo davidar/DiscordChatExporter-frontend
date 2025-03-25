@@ -60,7 +60,7 @@
                     {#if count === 0}
                         No Results
                     {:else}
-                        <!-- {addCommas(count)} Results -->
+                        {addCommas(count)} Results
                     {/if}
                 {:catch error}
                     <p style="color: red">{error.message}</p>

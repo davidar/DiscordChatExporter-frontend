@@ -76,7 +76,7 @@ export async function fetchSearchCount(guildId: string | null, prompt: string): 
         guildId = "000000000000000000000000"
     }
     try {
-        const response = await fetch(`/api/guild/semantic_search?guild_id=${encodeURIComponent(guildId)}&query=${encodeURIComponent(prompt)}&limit=1&fetch_full_messages=false`)
+        const response = await fetch(`/api/guild/semantic_search/count?guild_id=${encodeURIComponent(guildId)}&query=${encodeURIComponent(prompt)}`)
         const data = await response.json()
         return data.count
     }

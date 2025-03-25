@@ -210,4 +210,43 @@ async def build_index(
     
     except Exception as e:
         logger.error(f"Error building index: {e}")
-        raise HTTPException(status_code=500, detail=f"Error building index: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error building index: {str(e)}")
+
+@router.get("/guild/semantic_search/count")
+async def count_semantic_search(
+    guild_id: str, 
+    query: str
+) -> Dict[str, Any]:
+    """
+    Count semantic search results efficiently without retrieving messages
+    
+    Args:
+        guild_id: Guild ID to search in
+        query: Search query
+        
+    Returns:
+        Dictionary with count of matching results
+    """
+    try:
+        # Check database connection
+        if not Database.is_online():
+            raise HTTPException(status_code=503, detail="Database is not available")
+        
+        # Get vector store
+        vector_store = get_vector_store()
+        
+        # Get count of matches
+        count = vector_store.count_matches(
+            query=query,
+            guild_id=guild_id
+        )
+        
+        return {
+            "count": count
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in semantic search count: {e}")
+        raise HTTPException(status_code=500, detail=f"Error counting semantic search results: {str(e)}")
