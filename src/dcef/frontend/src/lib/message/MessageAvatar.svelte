@@ -8,7 +8,7 @@
 </script>
 
 {#if author}
-    <img class="avatar" src={checkUrl(author.avatar)} alt="avatar" on:click on:contextmenu|preventDefault={e=>onUserRightClick(e, author)}  />
+    <img class="avatar" src={checkUrl(author.avatar)} alt="" on:click on:contextmenu|preventDefault={e=>onUserRightClick(e, author)}  />
 {/if}
 
 <style>

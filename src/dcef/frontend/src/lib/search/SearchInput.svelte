@@ -146,7 +146,7 @@
 
         input {
             box-sizing: border-box;
-            width: 140px;
+            width: 300px;
             background-color: #202225;
             color: #dbdee1;
             height: 25px;
@@ -179,7 +179,7 @@
 
     .searchinput-wrapper.focused {
         input {
-            width: 250px;
+            width: 400px;
         }
     }
 

@@ -18,7 +18,7 @@
         <div class="message-reaction" class:me={emojiUsers.includes($currentUserId)} title=":{reaction.emoji.name}:" on:click={()=>reactionsModal.viewReactions(reaction)}>
             <img
                 src={checkUrl(reaction.emoji?.image)}
-                alt="Avatar"
+                alt=":{reaction.emoji.name}:"
                 width="100%"
                 height="100%"
             />
