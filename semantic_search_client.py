@@ -2,10 +2,16 @@
 import argparse
 import requests
 import json
+import asyncio
 from datetime import datetime
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
+
+try:
+    from ollama import AsyncClient
+except ImportError:
+    pass
 
 def format_timestamp(timestamp_str):
     """Format a Discord timestamp string to a human-readable format."""
@@ -129,6 +135,76 @@ def check_server_status(server_url):
     
     return False
 
+async def generate_summary_with_ollama(results, query, model="mistral-small"):
+    """Generate a summary of search results using Ollama."""
+    console = Console()
+    
+    if not results or "results" not in results or not results["results"]:
+        console.print(Panel("No results to summarize", style="yellow"))
+        return
+    
+    # Create messages with system prompt and user content
+    messages = []
+    
+    # Prepare search results for the system prompt
+    search_results_text = ""
+    for i, result in enumerate(results["results"], 1):
+        timestamp = format_timestamp(result.get("timestamp", ""))
+        author = result.get("author_name", "Unknown User")
+        content = result.get("content", "")
+        search_results_text += f"{i}. [{timestamp}] @{author}: {content}\n"
+    
+    # System message for balanced, authentic style with concise responses
+    system_message = {
+        "role": "system", 
+        "content": f"""You are the Archivist - someone who's been around the Discord server for ages and has seen all these conversations unfold. You have a natural ability to recall discussions and their context, speaking like someone who was there, not like someone reading records.
+
+Context (you recall these conversations naturally):
+{search_results_text}
+
+When responding:
+- Deliver your response as a single, focused paragraph
+- Speak from firsthand recollection, as someone who participated in or observed these conversations
+- Find a balanced tone - neither too verbose nor too terse
+- Include enough meaningful details to provide context, but be concise
+- Use a natural, slightly world-weary tone that comes from having seen many similar discussions
+- No need to cite sources or reference messages - this is knowledge you personally possess
+- Occasional mild humour or insight is welcome when appropriate
+- Phrase things conversationally but with substance - like a knowledgeable old-timer at a pub
+- Focus on the substance of what people were discussing rather than the specific messages
+- Provide thoughtful context that connects related ideas when helpful
+
+Example (if asked about Docker issues):
+"The Docker situation on Windows has been problematic lately. There was a stretch where several people hit WSL configuration issues that prevented Docker from running properly. Someone eventually discovered that updating to WSL2 before reinstalling Docker fixed most of the problems. This has been a recurring theme with Windows containerization - the WSL layer adds complexity but usually holds the key to making things work."
+
+Respond with a focused, insightful paragraph that feels like it comes from memory, not research."""
+    }
+    
+    messages.append(system_message)
+    
+    # Use the original search query as the user content
+    messages.append({"role": "user", "content": query})
+    
+    try:
+        console.print("\n[bold cyan]Asking the Archivist...[/bold cyan]")
+        client = AsyncClient()
+        
+        # Use streaming to show tokens as they're generated
+        console.print("\n[dim italic]The Archivist recalls...[/dim italic]")
+        async for chunk in await client.chat(
+            model=model,
+            messages=messages,
+            stream=True
+        ):
+            print(chunk['message']['content'], end='', flush=True)
+        
+        print("\n")  # Add a newline at the end
+        
+    except Exception as e:
+        console.print(f"\n[bold red]Connection error:[/bold red] {str(e)}")
+        console.print("Make sure Ollama is installed and running with the mistral-small model pulled.")
+        console.print("You can install Ollama from https://ollama.com/ and run 'ollama pull mistral-small'")
+
 def main():
     parser = argparse.ArgumentParser(description="Search Discord messages using semantic search")
     parser.add_argument("query", help="Search query")
@@ -139,6 +215,8 @@ def main():
                         help="FastAPI server URL (default: http://localhost:21011)")
     parser.add_argument("--port", type=int, help="Server port (overrides port in --server)")
     parser.add_argument("--json", action="store_true", help="Show full JSON results")
+    parser.add_argument("--summarize", action="store_true", help="Generate a summary of results using Ollama")
+    parser.add_argument("--model", default="mistral-small", help="Ollama model to use for summarization")
     
     args = parser.parse_args()
     
@@ -165,6 +243,19 @@ def main():
     
     if results:
         display_results(results, args.json)
+        
+        # Generate summary if requested
+        if args.summarize:
+            try:
+                asyncio.run(generate_summary_with_ollama(results, args.query, args.model))
+            except NameError:
+                console.print(Panel(
+                    "[bold red]Error:[/bold red] The ollama package is not installed.\n\n"
+                    "Please install it with: pip install ollama\n"
+                    "Then make sure Ollama is running and you've pulled the model with: ollama pull mistral-small",
+                    title="Missing Dependency",
+                    border_style="red"
+                ))
 
 if __name__ == "__main__":
     main() 
