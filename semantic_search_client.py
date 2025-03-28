@@ -87,54 +87,191 @@ def display_results(results, show_full_json=False, show_context=True):
     count = results.get("count", 0)
     console.print(f"Found [bold cyan]{count}[/bold cyan] results")
     
-    # Display results in a rich format
-    for i, result in enumerate(results["results"], 1):
-        vector_score = f"{result.get('vector_score', 0):.2f}"
-        rerank_score = f"{result.get('rerank_score', 0):.2f}"
-        timestamp = format_timestamp(result.get("timestamp", ""))
-        author_name = result.get("author_name", "Unknown User")
-        content = result.get("content", "")
-        
-        # Create context info
-        context_info = []
-        if result.get("has_reply_chain"):
-            context_info.append("[reply chain]")
-        if result.get("has_preceding_messages"):
-            context_info.append("[has context]")
-        if result.get("has_embeds"):
-            context_info.append("[has embeds]")
-        
-        context_str = " ".join(context_info)
-        
-        # Format header with scores and metadata
-        console.print(f"[bold cyan]Result {i}[/bold cyan] • [dim]{timestamp}[/dim] • [bold green]{author_name}[/bold green] {context_str}")
-        console.print(f"[dim cyan](vector: {vector_score}, rerank: {rerank_score})[/dim cyan]")
-        
-        # Display the main message content
-        console.print(Panel(content, expand=False))
-        
-        # Display context if present and requested
-        if show_context and "full_context" in result and result["full_context"]:
-            context = result["full_context"]
+    # Reconstruct the complete conversation from overlapping fragments
+    # First, collect information about each result's context
+    conversation_fragments = []
+    
+    for result_idx, result in enumerate(results["results"], 1):
+        if not show_context or "full_context" not in result or not result["full_context"]:
+            continue
             
-            # If context is present, show it in a formatted way
-            context_lines = context.strip().split("\n\n")
+        # Parse the context into individual messages with authors
+        messages = []
+        context_lines = result["full_context"].strip().split("\n\n")
+        
+        # Get the result metadata
+        result_metadata = {
+            "result_index": result_idx,
+            "vector_score": result.get("vector_score", 0),
+            "rerank_score": result.get("rerank_score", 0),
+            "has_reply_chain": result.get("has_reply_chain", False),
+            "has_preceding_messages": result.get("has_preceding_messages", False),
+            "has_embeds": result.get("has_embeds", False),
+            "timestamp": result.get("timestamp", ""),
+            "author_name": result.get("author_name", "Unknown User")
+        }
+        
+        # Process each line in the context
+        for i, line in enumerate(context_lines):
+            if not line:
+                continue
+                
+            # Try to extract author and content
+            author = "Unknown"
+            content = line
             
-            if len(context_lines) > 1:  # Multiple context components
-                for ctx_part in context_lines:
-                    if not ctx_part or ctx_part == content:  # Skip empty or duplicate of main content
-                        continue
+            if ": " in line:
+                author, content = line.split(": ", 1)
+            
+            messages.append({
+                "author": author,
+                "content": content,
+                "is_last": (i == len(context_lines) - 1)  # Flag if this is the result's matched message
+            })
+        
+        # Add this fragment to our collection
+        conversation_fragments.append({
+            "messages": messages,
+            "metadata": result_metadata
+        })
+    
+    # Now group fragments into conversations by finding overlaps
+    conversations = []
+    
+    # Simple clustering of fragments based on common messages
+    processed_indices = set()
+    
+    for i, fragment in enumerate(conversation_fragments):
+        if i in processed_indices:
+            continue
+            
+        # Start a new conversation with this fragment
+        current_conversation = {
+            "messages": [],
+            "matched_messages": []  # Messages with metadata
+        }
+        
+        # Add the fragment's messages to the conversation
+        for msg in fragment["messages"]:
+            msg_key = f"{msg['author']}:{msg['content']}"
+            
+            # Check if this message is already in the conversation
+            existing_msg = next((m for m in current_conversation["messages"] 
+                               if f"{m['author']}:{m['content']}" == msg_key), None)
+            
+            if not existing_msg:
+                msg_copy = msg.copy()
+                current_conversation["messages"].append(msg_copy)
+                
+                # If this is the matched message from the result, add it to matched_messages
+                if msg["is_last"]:
+                    current_conversation["matched_messages"].append({
+                        "message_index": len(current_conversation["messages"]) - 1,
+                        "metadata": fragment["metadata"]
+                    })
+        
+        # Look for overlapping fragments to merge into this conversation
+        for j, other_fragment in enumerate(conversation_fragments):
+            if j == i or j in processed_indices:
+                continue
+                
+            # Check if there's significant overlap with this fragment
+            # (at least one common message)
+            has_overlap = False
+            for msg in other_fragment["messages"]:
+                msg_key = f"{msg['author']}:{msg['content']}"
+                if any(f"{m['author']}:{m['content']}" == msg_key for m in current_conversation["messages"]):
+                    has_overlap = True
+                    break
+            
+            if has_overlap:
+                # Add any new messages from this fragment
+                for msg in other_fragment["messages"]:
+                    msg_key = f"{msg['author']}:{msg['content']}"
                     
-                    # Try to extract author if the format is "Author: Content"
-                    if ": " in ctx_part:
-                        ctx_author, ctx_content = ctx_part.split(": ", 1)
-                        console.print(f"[dim blue]{ctx_author}:[/dim blue] {ctx_content}")
+                    # Check if already in conversation
+                    existing_msg = next((m for m in current_conversation["messages"] 
+                                       if f"{m['author']}:{m['content']}" == msg_key), None)
+                    
+                    if not existing_msg:
+                        msg_copy = msg.copy()
+                        current_conversation["messages"].append(msg_copy)
+                        
+                        # If this is the matched message, add it to matched_messages
+                        if msg["is_last"]:
+                            current_conversation["matched_messages"].append({
+                                "message_index": len(current_conversation["messages"]) - 1,
+                                "metadata": other_fragment["metadata"]
+                            })
                     else:
-                        console.print(f"[dim]{ctx_part}[/dim]")
-            
-            console.print("")  # Add space between results
+                        # If already exists but is a matched message in this fragment,
+                        # add the metadata
+                        if msg["is_last"]:
+                            msg_index = current_conversation["messages"].index(existing_msg)
+                            current_conversation["matched_messages"].append({
+                                "message_index": msg_index,
+                                "metadata": other_fragment["metadata"]
+                            })
+                
+                processed_indices.add(j)
         
-        console.print("──" * 40)  # Separator between results
+        # Add the processed fragment
+        processed_indices.add(i)
+        conversations.append(current_conversation)
+    
+    # Display each conversation
+    for conv_idx, conversation in enumerate(conversations, 1):
+        console.print(f"\n[bold]Conversation {conv_idx}:[/bold]")
+        
+        # Sort the messages to ensure they're in order
+        # (we might have added them out of order when merging fragments)
+        # For now, assume the order they came in is correct
+        
+        # Display each message
+        for i, message in enumerate(conversation["messages"]):
+            author = message["author"]
+            content = message["content"]
+            
+            # Check if this message is a matched result
+            is_match = any(mm["message_index"] == i for mm in conversation["matched_messages"])
+            
+            if is_match:
+                # Show the matched message with highlighting
+                # Get timestamp from first metadata entry for this message
+                matched_entry = next((mm for mm in conversation["matched_messages"] if mm["message_index"] == i), None)
+                if matched_entry:
+                    timestamp = format_timestamp(matched_entry["metadata"]["timestamp"])
+                    console.print(f"[dim]{timestamp}[/dim] [bold green]{author}:[/bold green] {content}")
+                else:
+                    console.print(f"[bold green]{author}:[/bold green] {content}")
+                
+                # Show metadata for each matching result
+                for matched in conversation["matched_messages"]:
+                    if matched["message_index"] == i:
+                        metadata = matched["metadata"]
+                        vector_score = f"{metadata['vector_score']:.2f}"
+                        rerank_score = f"{metadata['rerank_score']:.2f}"
+                        result_idx = metadata["result_index"]
+                        
+                        # Create context info string
+                        context_info = []
+                        if metadata["has_reply_chain"]:
+                            context_info.append("[reply chain]")
+                        if metadata["has_preceding_messages"]:
+                            context_info.append("[has context]")
+                        if metadata["has_embeds"]:
+                            context_info.append("[has embeds]")
+                        
+                        context_str = " ".join(context_info)
+                        timestamp = format_timestamp(metadata["timestamp"])
+                        
+                        # Display the metadata
+                        console.print(f"[dim cyan]Result {result_idx}: (vector: {vector_score}, rerank: {rerank_score}) • {timestamp} {context_str}[/dim cyan]")
+            else:
+                # Show regular message
+                console.print(f"[dim blue]{author}:[/dim blue] {content}")
+        
+        console.print("──" * 40)  # Separator between conversations
     
     # Display detailed view for each result if requested
     if show_full_json:

@@ -598,7 +598,7 @@ class VectorStore:
             logger.error(f"Error deleting guild documents: {e}")
             raise
     
-    def search(self, query: str, limit: int = 10, similarity_cutoff: float = 0.7, use_context: bool = True) -> List[Dict[str, Any]]:
+    def search(self, query: str, limit: int = 10, similarity_cutoff: float = 0.5, use_context: bool = True) -> List[Dict[str, Any]]:
         """
         Search for messages using semantic search with reranking
         
