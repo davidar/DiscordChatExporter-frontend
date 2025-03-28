@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
 import argparse
+import ollama
 import requests
 import json
 import asyncio
 from datetime import datetime
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
-
-try:
-    from ollama import AsyncClient
-except ImportError:
-    pass
 
 def format_timestamp(timestamp_str):
     """Format a Discord timestamp string to a human-readable format."""
@@ -398,8 +393,8 @@ async def generate_summary_with_ollama(results, query, model="mistral-small"):
     # Sort conversations by max rerank score, highest first
     conversations.sort(key=lambda x: x["max_rerank_score"], reverse=True)
     
-    # Limit to top 3 conversations
-    conversations = conversations[:3]
+    # Limit to top 6 conversations
+    conversations = conversations[:6]
     
     # Format conversations for the summary
     message_counter = 1
@@ -425,8 +420,8 @@ async def generate_summary_with_ollama(results, query, model="mistral-small"):
                         timestamp = format_timestamp(matched_entry["metadata"]["timestamp"])
                 
                 # Format the message text
-                is_match = i in search_match_indices
-                message_text = f"MESSAGE {message_counter}: "
+                # is_match = i in search_match_indices
+                message_text = ""
                 
                 # Include timestamp for matched messages
                 if timestamp:
@@ -489,15 +484,18 @@ Respond like someone who's seen it all before - knowledgeable but slightly jaded
     print(json.dumps(messages, indent=2))
     
     try:
-        console.print("\n[bold cyan]Consulting the Keeper of Lore...[/bold cyan]")
-        client = AsyncClient()
+        # console.print("\n[bold cyan]Consulting the Keeper of Lore...[/bold cyan]")
+        client = ollama.AsyncClient()
         
         # Use streaming to show tokens as they're generated
         console.print("\n[dim italic]The Keeper of Lore speaks...[/dim italic]")
         async for chunk in await client.chat(
             model=model,
             messages=messages,
-            stream=True
+            stream=True,
+            options=ollama.Options(
+                num_ctx=32768,
+            )
         ):
             print(chunk['message']['content'], end='', flush=True)
         
