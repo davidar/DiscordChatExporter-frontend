@@ -76,23 +76,25 @@ def search_messages(query, limit=10, fetch_full_messages=True, server_url="http:
         ))
         return None
 
-def display_results(results, show_full_json=False, show_context=True):
-    """Display search results in a nice format using rich."""
-    console = Console()
+def extract_conversation_fragments(results):
+    """
+    Extract conversation fragments from search results.
     
-    if not results or "results" not in results or not results["results"]:
-        console.print(Panel("No results found", style="yellow"))
-        return
-    
-    count = results.get("count", 0)
-    console.print(f"Found [bold cyan]{count}[/bold cyan] results")
-    
-    # Reconstruct the complete conversation from overlapping fragments
-    # First, collect information about each result's context
+    Args:
+        results: The search results from the API
+        
+    Returns:
+        List of conversation fragments
+    """
     conversation_fragments = []
     
+    # Skip if no results
+    if not results or "results" not in results or not results["results"]:
+        return conversation_fragments
+    
+    # Extract fragments from each result
     for result_idx, result in enumerate(results["results"], 1):
-        if not show_context or "full_context" not in result or not result["full_context"]:
+        if "full_context" not in result or not result["full_context"]:
             continue
             
         # Parse the context into individual messages with authors
@@ -135,13 +137,29 @@ def display_results(results, show_full_json=False, show_context=True):
             "metadata": result_metadata
         })
     
+    return conversation_fragments
+
+def merge_conversation_fragments(fragments):
+    """
+    Merge overlapping conversation fragments into coherent conversations.
+    
+    Args:
+        fragments: List of conversation fragments to merge
+        
+    Returns:
+        List of merged conversations
+    """
+    # Skip if no fragments
+    if not fragments:
+        return []
+    
     # Now group fragments into conversations by finding overlaps
     conversations = []
     
     # Simple clustering of fragments based on common messages
     processed_indices = set()
     
-    for i, fragment in enumerate(conversation_fragments):
+    for i, fragment in enumerate(fragments):
         if i in processed_indices:
             continue
             
@@ -171,7 +189,7 @@ def display_results(results, show_full_json=False, show_context=True):
                     })
         
         # Look for overlapping fragments to merge into this conversation
-        for j, other_fragment in enumerate(conversation_fragments):
+        for j, other_fragment in enumerate(fragments):
             if j == i or j in processed_indices:
                 continue
                 
@@ -219,59 +237,98 @@ def display_results(results, show_full_json=False, show_context=True):
         processed_indices.add(i)
         conversations.append(current_conversation)
     
-    # Display each conversation
-    for conv_idx, conversation in enumerate(conversations, 1):
-        console.print(f"\n[bold]Conversation {conv_idx}:[/bold]")
+    return conversations
+
+def display_results(results, show_full_json=False, show_context=True):
+    """Display search results in a nice format using rich."""
+    console = Console()
+    
+    if not results or "results" not in results or not results["results"]:
+        console.print(Panel("No results found", style="yellow"))
+        return
+    
+    count = results.get("count", 0)
+    console.print(f"Found [bold cyan]{count}[/bold cyan] results")
+    
+    # Only reconstruct conversations if context is enabled
+    if show_context:
+        # Extract conversation fragments
+        fragments = extract_conversation_fragments(results)
         
-        # Sort the messages to ensure they're in order
-        # (we might have added them out of order when merging fragments)
-        # For now, assume the order they came in is correct
+        # Merge fragments into conversations
+        conversations = merge_conversation_fragments(fragments)
         
-        # Display each message
-        for i, message in enumerate(conversation["messages"]):
-            author = message["author"]
-            content = message["content"]
+        # Display each conversation
+        for conv_idx, conversation in enumerate(conversations, 1):
+            console.print(f"\n[bold]Conversation {conv_idx}:[/bold]")
             
-            # Check if this message is a matched result
-            is_match = any(mm["message_index"] == i for mm in conversation["matched_messages"])
-            
-            if is_match:
-                # Show the matched message with highlighting
-                # Get timestamp from first metadata entry for this message
-                matched_entry = next((mm for mm in conversation["matched_messages"] if mm["message_index"] == i), None)
-                if matched_entry:
-                    timestamp = format_timestamp(matched_entry["metadata"]["timestamp"])
-                    console.print(f"[dim]{timestamp}[/dim] [bold green]{author}:[/bold green] {content}")
-                else:
-                    console.print(f"[bold green]{author}:[/bold green] {content}")
+            # Display each message
+            for i, message in enumerate(conversation["messages"]):
+                author = message["author"]
+                content = message["content"]
                 
-                # Show metadata for each matching result
-                for matched in conversation["matched_messages"]:
-                    if matched["message_index"] == i:
-                        metadata = matched["metadata"]
-                        vector_score = f"{metadata['vector_score']:.2f}"
-                        rerank_score = f"{metadata['rerank_score']:.2f}"
-                        result_idx = metadata["result_index"]
-                        
-                        # Create context info string
-                        context_info = []
-                        if metadata["has_reply_chain"]:
-                            context_info.append("[reply chain]")
-                        if metadata["has_preceding_messages"]:
-                            context_info.append("[has context]")
-                        if metadata["has_embeds"]:
-                            context_info.append("[has embeds]")
-                        
-                        context_str = " ".join(context_info)
-                        timestamp = format_timestamp(metadata["timestamp"])
-                        
-                        # Display the metadata
-                        console.print(f"[dim cyan]Result {result_idx}: (vector: {vector_score}, rerank: {rerank_score}) • {timestamp} {context_str}[/dim cyan]")
-            else:
-                # Show regular message
-                console.print(f"[dim blue]{author}:[/dim blue] {content}")
+                # Check if this message is a matched result
+                is_match = any(mm["message_index"] == i for mm in conversation["matched_messages"])
+                
+                if is_match:
+                    # Show the matched message with highlighting
+                    # Get timestamp from first metadata entry for this message
+                    matched_entry = next((mm for mm in conversation["matched_messages"] if mm["message_index"] == i), None)
+                    if matched_entry:
+                        timestamp = format_timestamp(matched_entry["metadata"]["timestamp"])
+                        console.print(f"[dim]{timestamp}[/dim] [bold green]{author}:[/bold green] {content}")
+                    else:
+                        console.print(f"[bold green]{author}:[/bold green] {content}")
+                    
+                    # Show metadata for each matching result
+                    for matched in conversation["matched_messages"]:
+                        if matched["message_index"] == i:
+                            metadata = matched["metadata"]
+                            vector_score = f"{metadata['vector_score']:.2f}"
+                            rerank_score = f"{metadata['rerank_score']:.2f}"
+                            result_idx = metadata["result_index"]
+                            
+                            # Create context info string
+                            context_info = []
+                            if metadata["has_reply_chain"]:
+                                context_info.append("[reply chain]")
+                            if metadata["has_preceding_messages"]:
+                                context_info.append("[has context]")
+                            if metadata["has_embeds"]:
+                                context_info.append("[has embeds]")
+                            
+                            context_str = " ".join(context_info)
+                            timestamp = format_timestamp(metadata["timestamp"])
+                            
+                            # Display the metadata
+                            console.print(f"[dim cyan]Result {result_idx}: (vector: {vector_score}, rerank: {rerank_score}) • {timestamp} {context_str}[/dim cyan]")
+                else:
+                    # Show regular message
+                    console.print(f"[dim blue]{author}:[/dim blue] {content}")
+            
+            console.print("──" * 40)  # Separator between conversations
+    
+    # If there are no conversations or context is disabled, show individual results
+    if not show_context or (show_context and not conversations):
+        console.print("\n[bold]Individual Results:[/bold]")
         
-        console.print("──" * 40)  # Separator between conversations
+        for idx, result in enumerate(results["results"], 1):
+            timestamp = format_timestamp(result.get("timestamp", ""))
+            author = result.get("author_name", "Unknown")
+            content = result.get("content", "")
+            
+            console.print(f"[bold]{idx}.[/bold] [dim]{timestamp}[/dim] [bold green]{author}:[/bold green] {content}")
+            
+            # Show scores
+            vector_score = result.get("vector_score")
+            rerank_score = result.get("rerank_score")
+            
+            if vector_score is not None and rerank_score is not None:
+                vector_score_str = f"{vector_score:.2f}"
+                rerank_score_str = f"{rerank_score:.2f}"
+                console.print(f"   [dim cyan](vector: {vector_score_str}, rerank: {rerank_score_str})[/dim cyan]")
+            
+            console.print()
     
     # Display detailed view for each result if requested
     if show_full_json:
@@ -323,11 +380,88 @@ async def generate_summary_with_ollama(results, query, model="mistral-small"):
     
     # Prepare search results for the system prompt
     search_results_text = ""
-    for i, result in enumerate(results["results"], 1):
-        timestamp = format_timestamp(result.get("timestamp", ""))
-        author = result.get("author_name", "Unknown User")
-        content = result.get("content", "")
-        search_results_text += f"MESSAGE {i}: [{timestamp}] @{author}: {content}\n\n"
+    
+    # Extract and merge conversation fragments
+    fragments = extract_conversation_fragments(results)
+    conversations = merge_conversation_fragments(fragments)
+    
+    # Sort conversations by relevance (highest rerank_score of any matched message)
+    # For each conversation, find the highest rerank_score
+    for conversation in conversations:
+        max_rerank_score = float('-inf')
+        for match_info in conversation["matched_messages"]:
+            if match_info["metadata"]["rerank_score"] > max_rerank_score:
+                max_rerank_score = match_info["metadata"]["rerank_score"]
+        # Store the max score with the conversation
+        conversation["max_rerank_score"] = max_rerank_score
+    
+    # Sort conversations by max rerank score, highest first
+    conversations.sort(key=lambda x: x["max_rerank_score"], reverse=True)
+    
+    # Limit to top 3 conversations
+    conversations = conversations[:3]
+    
+    # Format conversations for the summary
+    message_counter = 1
+    
+    if conversations:
+        for conv_idx, conversation in enumerate(conversations, 1):
+            # Add a conversation header
+            search_results_text += f"CONVERSATION {conv_idx}:\n"
+            
+            # Track which messages are search matches
+            search_match_indices = set(mm["message_index"] for mm in conversation["matched_messages"])
+            
+            # Include all messages in the conversation with proper formatting
+            for i, message in enumerate(conversation["messages"]):
+                author = message["author"]
+                content = message["content"]
+                
+                # Get timestamp from metadata if this is a matched message
+                timestamp = ""
+                if i in search_match_indices:
+                    matched_entry = next((mm for mm in conversation["matched_messages"] if mm["message_index"] == i), None)
+                    if matched_entry:
+                        timestamp = format_timestamp(matched_entry["metadata"]["timestamp"])
+                
+                # Format the message text
+                is_match = i in search_match_indices
+                message_text = f"MESSAGE {message_counter}: "
+                
+                # Include timestamp for matched messages
+                if timestamp:
+                    message_text += f"[{timestamp}] "
+                
+                # Add the message content
+                message_text += f"@{author}: {content}"
+                
+                # Mark search matches with an asterisk
+                if is_match:
+                    message_text += " *"
+                
+                search_results_text += message_text + "\n\n"
+                message_counter += 1
+            
+            # Add a separator between conversations
+            search_results_text += "---\n\n"
+    
+    # If we don't have any conversations, fall back to direct results
+    if not search_results_text and "results" in results:
+        # Sort results by rerank score
+        sorted_results = sorted(results["results"], key=lambda x: x.get("rerank_score", 0), reverse=True)
+        # Limit to top 5 results
+        sorted_results = sorted_results[:5]
+        
+        for i, result in enumerate(sorted_results, 1):
+            timestamp = format_timestamp(result.get("timestamp", ""))
+            author = result.get("author_name", "Unknown User")
+            content = result.get("content", "")
+            search_results_text += f"MESSAGE {i}: [{timestamp}] @{author}: {content}\n\n"
+    
+    # If no results found
+    if not search_results_text:
+        console.print(Panel("No results to summarize", style="yellow"))
+        return
     
     # System message for balanced, authentic style with concise responses
     system_message = {
@@ -352,6 +486,7 @@ When responding:
 - Phrase things conversationally but with substance - like a knowledgeable old-timer at a pub
 - Focus on the substance of what people were discussing rather than the specific messages
 - Provide thoughtful context that connects related ideas when helpful
+- Messages marked with an asterisk (*) are the ones that directly match the search query
 
 Example (if asked about Docker issues):
 "The Docker situation on Windows has been problematic lately. There was a stretch where several people hit WSL configuration issues that prevented Docker from running properly [2]. Someone eventually discovered that updating to WSL2 before reinstalling Docker fixed most of the problems [5]. This has been a recurring theme with Windows containerization - the WSL layer adds complexity but usually holds the key to making things work [8]."
@@ -418,7 +553,7 @@ def main():
         return
     
     console.print(f"Searching for: [bold cyan]{args.query}[/bold cyan]")
-    console.print(f"Using {'context-aware' if args.use_context else 'standard'} search index")
+    console.print(f"Using {'context-aware' if args.use_context else 'standard'} search index with client-side conversation merging")
     
     results = search_messages(
         query=args.query,
