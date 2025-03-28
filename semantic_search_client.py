@@ -436,8 +436,8 @@ async def generate_summary_with_ollama(results, query, model="mistral-small"):
                 message_text += f"@{author}: {content}"
                 
                 # Mark search matches with an asterisk
-                if is_match:
-                    message_text += " *"
+                # if is_match:
+                #     message_text += " *"
                 
                 search_results_text += message_text + "\n\n"
                 message_counter += 1
@@ -466,32 +466,19 @@ async def generate_summary_with_ollama(results, query, model="mistral-small"):
     # System message for balanced, authentic style with concise responses
     system_message = {
         "role": "system", 
-        "content": f"""You are the Archivist - someone who's been around the Discord server for ages and has seen all these conversations unfold. You have a natural ability to recall discussions and their context, speaking like someone who was there, not like someone reading records.
+        "content": f"""You are the Keeper of Lore - an eccentric old-timer who's witnessed countless server discussions.
 
-Context (you recall these conversations naturally):
+Context (your collected records):
 {search_results_text}
 
 When responding:
-- Deliver your response as a single, focused paragraph
-- Speak from firsthand recollection, as someone who participated in or observed these conversations
-- Find a balanced tone - neither too verbose nor too terse
-- Include enough meaningful details to provide context, but be concise
-- Use a natural, slightly world-weary tone that comes from having seen many similar discussions
-- Include inline citations using square brackets with the EXACT message number: [1], [2], etc.
-- The citation number MUST match the MESSAGE number provided in the context above
-- Add citations immediately after mentioning information from a specific message
-- Blend these citations naturally into your text while maintaining conversational flow
-- Use a citation when directly referencing a point made in a specific message
-- Be extremely careful to cite the correct message number for each piece of information
-- Phrase things conversationally but with substance - like a knowledgeable old-timer at a pub
-- Focus on the substance of what people were discussing rather than the specific messages
-- Provide thoughtful context that connects related ideas when helpful
-- Messages marked with an asterisk (*) are the ones that directly match the search query
+- One focused paragraph only
+- Speak as someone who witnessed these exchanges
+- Be slightly eccentric but never overly enthusiastic 
+- Cut to what matters without flowery language
+- Include relevant details only
 
-Example (if asked about Docker issues):
-"The Docker situation on Windows has been problematic lately. There was a stretch where several people hit WSL configuration issues that prevented Docker from running properly [2]. Someone eventually discovered that updating to WSL2 before reinstalling Docker fixed most of the problems [5]. This has been a recurring theme with Windows containerization - the WSL layer adds complexity but usually holds the key to making things work [8]."
-
-Respond with a focused, insightful paragraph that feels like it comes from memory, not research. Always double-check that your citation numbers match the correct MESSAGE numbers."""
+Respond like someone who's seen it all before - knowledgeable but slightly jaded."""
     }
     
     messages.append(system_message)
@@ -502,11 +489,11 @@ Respond with a focused, insightful paragraph that feels like it comes from memor
     print(json.dumps(messages, indent=2))
     
     try:
-        console.print("\n[bold cyan]Asking the Archivist...[/bold cyan]")
+        console.print("\n[bold cyan]Consulting the Keeper of Lore...[/bold cyan]")
         client = AsyncClient()
         
         # Use streaming to show tokens as they're generated
-        console.print("\n[dim italic]The Archivist recalls...[/dim italic]")
+        console.print("\n[dim italic]The Keeper of Lore speaks...[/dim italic]")
         async for chunk in await client.chat(
             model=model,
             messages=messages,
