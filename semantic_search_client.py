@@ -21,7 +21,7 @@ def format_timestamp(timestamp_str):
     except (ValueError, AttributeError):
         return timestamp_str
 
-def search_messages(query, limit=10, fetch_full_messages=True, server_url="http://localhost:21011"):
+def search_messages(query, limit=10, fetch_full_messages=True, server_url="http://localhost:21011", use_context=True):
     """
     Search for messages using the semantic search API.
     
@@ -30,6 +30,7 @@ def search_messages(query, limit=10, fetch_full_messages=True, server_url="http:
         limit: Maximum number of results to return
         fetch_full_messages: Whether to fetch full message data
         server_url: The URL of the FastAPI server
+        use_context: Whether to use the context-aware search index
         
     Returns:
         Dictionary with search results or error message
@@ -38,7 +39,8 @@ def search_messages(query, limit=10, fetch_full_messages=True, server_url="http:
     params = {
         "query": query,
         "limit": limit,
-        "fetch_full_messages": fetch_full_messages
+        "fetch_full_messages": fetch_full_messages,
+        "use_context": use_context
     }
     
     console = Console()
@@ -74,7 +76,7 @@ def search_messages(query, limit=10, fetch_full_messages=True, server_url="http:
         ))
         return None
 
-def display_results(results, show_full_json=False):
+def display_results(results, show_full_json=False, show_context=True):
     """Display search results in a nice format using rich."""
     console = Console()
     
@@ -85,23 +87,59 @@ def display_results(results, show_full_json=False):
     count = results.get("count", 0)
     console.print(f"Found [bold cyan]{count}[/bold cyan] results")
     
-    # Display results in a dense IRC-like format
-    for result in results["results"]:
+    # Display results in a rich format
+    for i, result in enumerate(results["results"], 1):
         vector_score = f"{result.get('vector_score', 0):.2f}"
         rerank_score = f"{result.get('rerank_score', 0):.2f}"
         timestamp = format_timestamp(result.get("timestamp", ""))
         author_name = result.get("author_name", "Unknown User")
         content = result.get("content", "")
         
-        # Format everything on a single line with both scores
-        console.print(f"[dim]{timestamp}[/dim] [bold green]{author_name}:[/bold green] {content} [dim][cyan](vector: {vector_score}, rerank: {rerank_score})[/dim]")
+        # Create context info
+        context_info = []
+        if result.get("has_reply_chain"):
+            context_info.append("[reply chain]")
+        if result.get("has_preceding_messages"):
+            context_info.append("[has context]")
+        if result.get("has_embeds"):
+            context_info.append("[has embeds]")
+        
+        context_str = " ".join(context_info)
+        
+        # Format header with scores and metadata
+        console.print(f"[bold cyan]Result {i}[/bold cyan] • [dim]{timestamp}[/dim] • [bold green]{author_name}[/bold green] {context_str}")
+        console.print(f"[dim cyan](vector: {vector_score}, rerank: {rerank_score})[/dim cyan]")
+        
+        # Display the main message content
+        console.print(Panel(content, expand=False))
+        
+        # Display context if present and requested
+        if show_context and "full_context" in result and result["full_context"]:
+            context = result["full_context"]
+            
+            # If context is present, show it in a formatted way
+            context_lines = context.strip().split("\n\n")
+            
+            if len(context_lines) > 1:  # Multiple context components
+                for ctx_part in context_lines:
+                    if not ctx_part or ctx_part == content:  # Skip empty or duplicate of main content
+                        continue
+                    
+                    # Try to extract author if the format is "Author: Content"
+                    if ": " in ctx_part:
+                        ctx_author, ctx_content = ctx_part.split(": ", 1)
+                        console.print(f"[dim blue]{ctx_author}:[/dim blue] {ctx_content}")
+                    else:
+                        console.print(f"[dim]{ctx_part}[/dim]")
+            
+            console.print("")  # Add space between results
+        
+        console.print("──" * 40)  # Separator between results
     
     # Display detailed view for each result if requested
     if show_full_json:
         console.print("\n[bold]Detailed Results:[/bold]")
         console.print(json.dumps(results, indent=2))
-    else:
-        console.print("\nUse --json to see full result details")
 
 def check_server_status(server_url):
     """Check if the FastAPI server is online and the database is connected."""
@@ -223,6 +261,10 @@ def main():
     parser.add_argument("--json", action="store_true", help="Show full JSON results")
     parser.add_argument("--summarize", action="store_true", help="Generate a summary of results using Ollama")
     parser.add_argument("--model", default="mistral-small", help="Ollama model to use for summarization")
+    parser.add_argument("--no-context", action="store_false", dest="use_context",
+                        help="Don't use context-aware search index")
+    parser.add_argument("--hide-context", action="store_false", dest="show_context",
+                        help="Don't display message context in results")
     
     args = parser.parse_args()
     
@@ -239,16 +281,18 @@ def main():
         return
     
     console.print(f"Searching for: [bold cyan]{args.query}[/bold cyan]")
+    console.print(f"Using {'context-aware' if args.use_context else 'standard'} search index")
     
     results = search_messages(
         query=args.query,
         limit=args.limit,
         fetch_full_messages=args.fetch_full_messages,
-        server_url=server_url
+        server_url=server_url,
+        use_context=args.use_context
     )
     
     if results:
-        display_results(results, args.json)
+        display_results(results, args.json, args.show_context)
         
         # Generate summary if requested
         if args.summarize:
@@ -264,4 +308,4 @@ def main():
                 ))
 
 if __name__ == "__main__":
-    main() 
+    main()

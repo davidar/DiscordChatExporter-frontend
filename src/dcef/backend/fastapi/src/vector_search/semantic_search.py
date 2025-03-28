@@ -29,7 +29,8 @@ def get_vector_store() -> VectorStore:
 async def global_semantic_search(
     query: str, 
     limit: int = Query(10, ge=1, le=100),
-    fetch_full_messages: bool = Query(True)
+    fetch_full_messages: bool = Query(True),
+    use_context: bool = Query(True)
 ) -> Dict[str, Any]:
     """
     Perform semantic search across all messages
@@ -38,6 +39,7 @@ async def global_semantic_search(
         query: Search query
         limit: Maximum number of results to return
         fetch_full_messages: Whether to fetch full message objects from MongoDB
+        use_context: Whether to use the context-aware search index
         
     Returns:
         Dictionary with search results
@@ -53,7 +55,8 @@ async def global_semantic_search(
         # Search for messages
         search_results = vector_store.search(
             query=query,
-            limit=limit
+            limit=limit,
+            use_context=use_context
         )
         
         # If no results, return empty list
@@ -87,6 +90,11 @@ async def global_semantic_search(
                 lookup_key = f"{guild_id}_{message_id}"
                 if lookup_key in all_messages:
                     result["message"] = all_messages[lookup_key]
+                
+                # Include the full context text if we're using context-aware search
+                if use_context and "content" in result:
+                    # Extract full context from text field if it exists
+                    result["full_context"] = result.get("content")
         
         return {
             "results": search_results,
@@ -104,7 +112,8 @@ async def semantic_search(
     guild_id: str, 
     query: str, 
     limit: int = Query(10, ge=1, le=100),
-    fetch_full_messages: bool = Query(True)
+    fetch_full_messages: bool = Query(True),
+    use_context: bool = Query(True)
 ) -> Dict[str, Any]:
     """
     Perform semantic search on guild messages
@@ -114,6 +123,7 @@ async def semantic_search(
         query: Search query
         limit: Maximum number of results to return
         fetch_full_messages: Whether to fetch full message objects from MongoDB
+        use_context: Whether to use the context-aware search index
         
     Returns:
         Dictionary with search results
@@ -129,7 +139,8 @@ async def semantic_search(
         # Search for messages (using global search and filtering results by guild_id)
         all_results = vector_store.search(
             query=query,
-            limit=limit * 5  # Request more results since we're filtering afterward
+            limit=limit * 5,  # Request more results since we're filtering afterward
+            use_context=use_context
         )
         
         # Filter results to only include the specified guild
@@ -158,6 +169,11 @@ async def semantic_search(
                 message_id = result["message_id"]
                 if message_id in message_lookup:
                     result["message"] = message_lookup[message_id]
+                
+                # Include the full context text if we're using context-aware search
+                if use_context and "content" in result:
+                    # Extract full context from text field if it exists
+                    result["full_context"] = result.get("content")
         
         return {
             "results": search_results,
@@ -215,7 +231,8 @@ async def build_index(
 @router.get("/guild/semantic_search/count")
 async def count_semantic_search(
     guild_id: str, 
-    query: str
+    query: str,
+    use_context: bool = Query(True)
 ) -> Dict[str, Any]:
     """
     Count semantic search results efficiently without retrieving messages
@@ -223,6 +240,7 @@ async def count_semantic_search(
     Args:
         guild_id: Guild ID to search in
         query: Search query
+        use_context: Whether to use the context-aware search index
         
     Returns:
         Dictionary with count of matching results
@@ -238,7 +256,8 @@ async def count_semantic_search(
         # Get count of matches
         count = vector_store.count_matches(
             query=query,
-            guild_id=guild_id
+            guild_id=guild_id,
+            use_context=use_context
         )
         
         return {
